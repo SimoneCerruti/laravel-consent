@@ -21,6 +21,7 @@ Work ships as **tracer bullets**: tiny vertical slices, one per pull request, ea
 - Add only the files and dependencies needed for the package behavior being implemented.
 - Prefer explicit Laravel package code over helper abstractions unless the extension point is real.
 - Concrete classes are `final`.
+- Everything other people read is written in English: code, comments, docs, commit messages, branches, issues, comments and PRs on GitHub. Talk to the maintainer in Italian.
 - Keep tests focused on observable package behavior through public APIs, service provider wiring, commands, routes, published resources, and documentation promises. Test paths mirror `src/` (`src/Http/Foo.php` -> `tests/Http/FooTest.php`).
 - The skeleton placeholders (`config('consent.placeholder')`, `consent:placeholder`, the placeholder view, translation and migration) exist only until the first slice that ships a real one of each: that slice replaces them.
 

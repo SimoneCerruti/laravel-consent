@@ -12,6 +12,10 @@ _Avoid_: Cookie type, purpose group
 The choice a **Consent subject** makes about the **Consent categories**: accept all, reject all, a custom selection, or a withdrawal.
 _Avoid_: Preference, choice
 
+**Consent version**:
+The number that identifies what a **Consent subject** was asked to decide. It changes when processing changes significantly, and a **Consent decision** made under any other version no longer counts.
+_Avoid_: Policy version, banner version
+
 **Consent subject**:
 One browser that made a **Consent decision**, known only by a random identifier the package gives it. It is not a person and does not identify one.
 _Avoid_: Subject (alone), visitor, user
