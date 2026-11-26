@@ -14,22 +14,27 @@ Reference: `~/projects/simonecerruti.com`. The banner exists; the proof-of-conse
 | Reference | Goes to | Changes |
 | --- | --- | --- |
 | `app/Livewire/Components/CookieConsent.php` | actions → `src/Http/Controllers/ConsentController.php`; optional adapter `src/Livewire/ConsentBanner.php` | categories from config instead of hard-coded `analytics/functional/marketing`; all writes go through `ConsentManager`, the controller is the canonical entry point |
-| `resources/views/layouts/public/cookie-consent.blade.php` (162 lines) | `resources/views/components/banner.blade.php` (`<x-consent::banner />`) | plain Blade + `<form method="POST">`, no `wire:`/Alpine; texts via translations, colours via CSS variables/Tailwind tokens, no app-specific copy |
+| `resources/views/layouts/public/cookie-consent.blade.php` (89 lines) | `resources/views/components/banner.blade.php` (`<x-consent::banner />`) | plain Blade + `<form method="POST">`, no `wire:`/Alpine; texts via translations, colours via CSS variables/Tailwind tokens, no app-specific copy |
 | `resources/views/layouts/public/cookie-toggle.blade.php` | `resources/views/components/toggle.blade.php` | `<x-consent::toggle>` |
 | `app/Http/Middleware/CookieConsentMiddleware.php` | `src/Http/Middleware/ShareConsent.php` | parse through `ConsentManager`; share `consent` view variable |
 | `resources/js/cookie-consent.js` | `resources/js/consent.js` (JS core, built to `public/vendor/consent/consent.js`) | framework-agnostic API + script registry from the payload, not hard-coded Clarity/reCAPTCHA |
-| inline bootstrap in `layouts/public/index.blade.php` (`window.__cookieConsent`, `window._clarityId`) | `<x-consent::bootstrap />` Blade component | serialises `Consent::payload()` and includes the JS core |
-| `tests/Feature/Http/CookieConsentMiddlewareTest.php`, `tests/Feature/Livewire/Components/CookieConsentTest.php` | `tests/` | port |
+| inline bootstrap in `layouts/public/index.blade.php` (`window.__cookieConsent`, `window.__appEnv`, `window._clarityId`) | `<x-consent::bootstrap />` Blade component | serialises `Consent::payload()` and includes the JS core |
+| `tests/Http/Middleware/CookieConsentMiddlewareTest.php`, `tests/Livewire/Components/CookieConsentTest.php` | `tests/` | port |
 | `app/Livewire/Pages/{CookiePolicy,PrivacyPolicy}.php` | NOT here | legal page rendering belongs to `laravel-legal-pages` |
 
-## 2. How the reference works (keep)
+## 2. How the reference works
 
-- Cookie `cookie_consent`: JSON `{version, timestamp, necessary:true, analytics, functional, marketing}`, 180 days, HttpOnly, `Lax`, secure from `session.secure`, queued with `Cookie::queue` from Livewire.
-- A cookie with no valid `version` is treated as "no choice made" and the banner shows.
-- The server parses it every request (middleware) and shares an array so Blade can skip third-party scripts server-side.
-- Actions: accept all, reject all, save granular preferences, open preferences, **withdraw** (forgets the cookie, dispatches `consent-updated`, shows the banner again), `open-cookie-banner` event so any link can reopen it.
-- The browser event `consent-updated` makes the JS load newly allowed scripts; scripts already loaded cannot be unloaded, so withdrawing needs a reload.
-- Legitimate-interest scripts (reCAPTCHA in the reference) load regardless but are still a registry entry so policy can change.
+Verified against the reference code: see the research note on branch `research/reference-implementation` (`docs/research/reference-implementation.md`).
+
+- Cookie `cookie_consent`: JSON `{version, timestamp, necessary:true, analytics, functional, marketing}` (`version` hard-coded to `1`), 180 days, path `/`, HttpOnly, `Lax`, secure from `session.secure`, queued with `Cookie::queue` from Livewire. The value is **encrypted by `EncryptCookies`** (not excluded), so a tampered value reads as no choice.
+- A cookie without a `version` key is treated as "no choice made" and the banner shows; the value itself is not validated (`isset` only).
+- The server parses it every request (middleware, parsing duplicated in the Livewire `mount()`) and shares `{given, necessary, analytics, functional, marketing}`. No Blade view uses it to skip scripts: it feeds the inline JS bootstrap and the server-side analytics gating of `TrackVisit`.
+- Actions: accept all, reject all, save granular preferences, open preferences, and `open-cookie-banner` (a Livewire event fired from inline `onclick`, opening the summary view) so any link can reopen it. A **withdraw** action exists (forgets the cookie, dispatches `consent-updated`, shows the banner again) but **no view calls it**: users can only reopen the banner and reject, which writes a new cookie.
+- The browser event `consent-updated` makes the JS load newly allowed scripts; it re-boots on `livewire:navigated`. Scripts already loaded cannot be unloaded: the JS reloads the page when analytics is revoked after Clarity loaded.
+- The only managed script is Clarity, loaded only when `__appEnv === 'production'` and a Clarity id is set. `functional`/`marketing` are only exposed as `data-functional-consent`/`data-marketing-consent` on `<html>`; nothing loads for them.
+- reCAPTCHA is **not** handled by the consent JS (its `loadRecaptcha()` is a stub): an inline layout script loads it only on pages marked `data-recaptcha-required`, regardless of consent.
+- No CSP is enforced and nothing uses nonces; inline scripts, `onclick` handlers and Alpine expressions would break under a strict CSP.
+- Reject does **not** have equal weight (accept is the filled, first button) and the banner is `role="dialog" aria-modal="false"` with no focus trap or Escape handling: the UX requirements in §3 are new work, not behaviour to keep.
 
 ## 3. Package design
 
@@ -91,7 +96,7 @@ laravel-consent/
       fetch state and a fresh CSRF token from `GET /consent`, so a cached page never carries the first visitor's state or a stale token.
     - Considered and rejected for v0.1: a Web Component `<consent-banner>`: needs JS (breaks the no-JS requirement), Shadow DOM fights
       Tailwind theming, and the root-layout Blade banner already covers every stack. Revisit only if a banner must mount inside the SPA tree without an adapter.
-12. **Banner UX** requirements to keep from the reference and tighten: reject must be as prominent as accept (equal visual weight), no pre-ticked toggles except `necessary`, a persistent "cookie settings" link (`<x-consent::settings-link />` dispatching `open-cookie-banner`), accessible dialog (focus trap, `aria-modal`, escape to close only after a choice exists), works without JS for the server-rendered state.
+12. **Banner UX** requirements (mostly new: of these, the reference only has unticked toggles): reject must be as prominent as accept (equal visual weight), no pre-ticked toggles except `necessary`, a persistent "cookie settings" link (`<x-consent::settings-link />` dispatching `open-cookie-banner`), accessible dialog (focus trap, `aria-modal`, escape to close only after a choice exists), works without JS for the server-rendered state.
     Guaranteed in the components the package ships (default banner and stubs); custom UIs cannot be enforced, so the README states the
     requirements explicitly and the payload carries no "primary" button hint.
 13. **Styling**: Tailwind classes in the reference. Publish the views; also support a CSS-variable theme (`--consent-bg`, `--consent-accent`) so `filament-consent` can customise without editing views. The stubs use the same variables.
